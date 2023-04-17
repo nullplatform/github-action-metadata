@@ -4,6 +4,18 @@ inputs:
   resource:
     description: "nullplatform resource to query"
     required: true
+  name:
+    description: "Application name"
+    required: false
+  status:
+    description: "Application status"
+    required: false
+  repository_url:
+    description: "Application repository URL"
+    required: false
+  repository_app_path:
+    description: "Application repository path inside a monorepo"
+    required: false
 runs:
   using: "node16"
   main: "dist/index.js"

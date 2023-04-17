@@ -2861,7 +2861,7 @@ class HttpClient {
     if (!isEmpty(query)) {
       uri = `${uri}?${query}`;
     }
-    const response = await this.client.get(`${this.baseUrl}/${uri}`);
+    const response = await this.client.get(uri);
     const { statusCode, statusMessage } = response.message;
     if (statusCode !== 200) {
       throw new Error(

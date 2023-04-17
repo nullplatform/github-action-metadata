@@ -30,7 +30,7 @@ async function run() {
 
     core.setOutput(QUERY_OUTPUT_NAME, result);
   } catch (error) {
-    core.setFailed(`Login failed: ${error.message}`);
+    core.setFailed(`Query metadata failed: ${error.message}`);
   }
 }
 

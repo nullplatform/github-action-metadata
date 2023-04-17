@@ -9,7 +9,7 @@ class HttpClient {
     this.client = new http.HttpClient();
     this.client.requestOptions = {
       headers: {
-        authorization: process.env[TOKEN_VARIABLE_NAME],
+        authorization: `Bearer ${process.env[TOKEN_VARIABLE_NAME]}`,
         [http.Headers.ContentType]: 'application/json',
       },
     };

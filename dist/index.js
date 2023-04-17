@@ -2827,12 +2827,18 @@ exports["default"] = _default;
 
 const http = __nccwpck_require__(255);
 const config = __nccwpck_require__(570);
+const { isEmpty } = __nccwpck_require__(2);
+
+const TOKEN_VARIABLE_NAME = 'NULLPLATFORM_ACCESS_TOKEN';
 
 class HttpClient {
   constructor() {
     this.client = new http.HttpClient();
     this.client.requestOptions = {
-      headers: { [http.Headers.ContentType]: 'application/json' },
+      headers: {
+        Authorization: process.env[TOKEN_VARIABLE_NAME],
+        [http.Headers.ContentType]: 'application/json',
+      },
     };
     this.baseUrl = config.baseUrl;
   }
@@ -2844,6 +2850,22 @@ class HttpClient {
     if (statusCode !== 200) {
       throw new Error(
         `POST to ${url} failed: [${statusCode}] ${statusMessage}`,
+      );
+    }
+    const result = await response.readBody();
+    return JSON.parse(result);
+  }
+
+  async get(url, query) {
+    let uri = `${this.baseUrl}/${url}`;
+    if (!isEmpty(query)) {
+      uri = `${uri}?${query}`;
+    }
+    const response = await this.client.get(`${this.baseUrl}/${uri}`);
+    const { statusCode, statusMessage } = response.message;
+    if (statusCode !== 200) {
+      throw new Error(
+        `GET to ${url} failed: [${statusCode}] ${statusMessage}`,
       );
     }
     const result = await response.readBody();
@@ -2871,9 +2893,20 @@ module.exports = config;
 /***/ 2:
 /***/ ((module) => {
 
+const RESOURCE_LIST = Object.freeze([
+  'application',
+  'build',
+  'release',
+  'deploy',
+]);
+
 class Validate {
   static isEmpty(string) {
     return !string;
+  }
+
+  static isValidResource(resource) {
+    return RESOURCE_LIST.includes(resource);
   }
 }
 
@@ -3022,55 +3055,34 @@ var __webpack_exports__ = {};
 const dotenv = __nccwpck_require__(437);
 const core = __nccwpck_require__(186);
 const HttpClient = __nccwpck_require__(349);
-const { isEmpty } = __nccwpck_require__(2);
+const { isEmpty, isValidResource } = __nccwpck_require__(2);
 
 dotenv.config();
 
-const TOKEN_VARIABLE_NAME = 'NULLPLATFORM_ACCESS_TOKEN';
+const QUERY_OUTPUT_NAME = 'metadata';
 
 async function run() {
   try {
     const client = new HttpClient();
 
-    const accessKey = core.getInput('access-key');
-    const secretAccessKey = core.getInput('secret-access-key');
-    const accessToken = core.getInput('access-token');
+    const resource = core.getInput('resource');
+    const query = core.getInput('query');
 
     core.info('Validating inputs...');
 
-    if (isEmpty(accessToken) && isEmpty(accessKey)) {
-      core.setFailed('Input "access-key" cannot be empty');
-    }
-    if (isEmpty(accessToken) && isEmpty(secretAccessKey)) {
-      core.setFailed('Input "secret-access-key" cannot be empty');
-    }
-    if (isEmpty(accessToken)) {
-      core.setFailed('Input "access-token" cannot be empty');
+    if (isEmpty(resource)) {
+      core.setFailed('Input "resource" cannot be empty');
+    } else if (!isValidResource(resource)) {
+      core.setFailed('Input "resource" must be one of these valid resources: application, build, release, deployment');
     }
 
-    core.info(
-      `Logging into Nullplatform using ${
-        isEmpty(accessToken) ? 'credentials' : 'access token'
-      }...`,
-    );
+    core.info(`Getting Nullplatform metadata for ${resource} resource with query: ${query}...`);
 
-    const body = {};
-    if (!isEmpty(accessToken)) {
-      body.access_token = accessToken;
-    } else {
-      body.access_key = accessKey;
-      body.secret_access_key = secretAccessKey;
-    }
+    const result = await client.get(resource, query);
 
-    const { token } = await client.post('login', body);
+    core.info(`Successfully queried ${resource} resource, got ${result.length} results`);
 
-    if (isEmpty(token)) {
-      core.setFailed('Output "token" cannot be empty');
-    }
-
-    core.info('Successfully logged in into Nullplatform');
-
-    core.exportVariable(TOKEN_VARIABLE_NAME, token);
+    core.setOutput(QUERY_OUTPUT_NAME, result);
   } catch (error) {
     core.setFailed(`Login failed: ${error.message}`);
   }

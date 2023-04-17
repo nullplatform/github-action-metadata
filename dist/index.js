@@ -1,7 +1,7 @@
 require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 351:
+/***/ 241:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -135,7 +135,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getIDToken = exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.notice = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
-const command_1 = __nccwpck_require__(351);
+const command_1 = __nccwpck_require__(241);
 const file_command_1 = __nccwpck_require__(717);
 const utils_1 = __nccwpck_require__(278);
 const os = __importStar(__nccwpck_require__(37));
@@ -1726,6 +1726,10 @@ function checkBypass(reqUrl) {
     if (!reqUrl.hostname) {
         return false;
     }
+    const reqHost = reqUrl.hostname;
+    if (isLoopbackAddress(reqHost)) {
+        return true;
+    }
     const noProxy = process.env['no_proxy'] || process.env['NO_PROXY'] || '';
     if (!noProxy) {
         return false;
@@ -1751,14 +1755,144 @@ function checkBypass(reqUrl) {
         .split(',')
         .map(x => x.trim().toUpperCase())
         .filter(x => x)) {
-        if (upperReqHosts.some(x => x === upperNoProxyItem)) {
+        if (upperNoProxyItem === '*' ||
+            upperReqHosts.some(x => x === upperNoProxyItem ||
+                x.endsWith(`.${upperNoProxyItem}`) ||
+                (upperNoProxyItem.startsWith('.') &&
+                    x.endsWith(`${upperNoProxyItem}`)))) {
             return true;
         }
     }
     return false;
 }
 exports.checkBypass = checkBypass;
+function isLoopbackAddress(host) {
+    const hostLower = host.toLowerCase();
+    return (hostLower === 'localhost' ||
+        hostLower.startsWith('127.') ||
+        hostLower.startsWith('[::1]') ||
+        hostLower.startsWith('[0:0:0:0:0:0:0:1]'));
+}
 //# sourceMappingURL=proxy.js.map
+
+/***/ }),
+
+/***/ 437:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const fs = __nccwpck_require__(147)
+const path = __nccwpck_require__(17)
+const os = __nccwpck_require__(37)
+const packageJson = __nccwpck_require__(968)
+
+const version = packageJson.version
+
+const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
+
+// Parser src into an Object
+function parse (src) {
+  const obj = {}
+
+  // Convert buffer to string
+  let lines = src.toString()
+
+  // Convert line breaks to same format
+  lines = lines.replace(/\r\n?/mg, '\n')
+
+  let match
+  while ((match = LINE.exec(lines)) != null) {
+    const key = match[1]
+
+    // Default undefined or null to empty string
+    let value = (match[2] || '')
+
+    // Remove whitespace
+    value = value.trim()
+
+    // Check if double quoted
+    const maybeQuote = value[0]
+
+    // Remove surrounding quotes
+    value = value.replace(/^(['"`])([\s\S]*)\1$/mg, '$2')
+
+    // Expand newlines if double quoted
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, '\n')
+      value = value.replace(/\\r/g, '\r')
+    }
+
+    // Add to object
+    obj[key] = value
+  }
+
+  return obj
+}
+
+function _log (message) {
+  console.log(`[dotenv@${version}][DEBUG] ${message}`)
+}
+
+function _resolveHome (envPath) {
+  return envPath[0] === '~' ? path.join(os.homedir(), envPath.slice(1)) : envPath
+}
+
+// Populates process.env from .env file
+function config (options) {
+  let dotenvPath = path.resolve(process.cwd(), '.env')
+  let encoding = 'utf8'
+  const debug = Boolean(options && options.debug)
+  const override = Boolean(options && options.override)
+
+  if (options) {
+    if (options.path != null) {
+      dotenvPath = _resolveHome(options.path)
+    }
+    if (options.encoding != null) {
+      encoding = options.encoding
+    }
+  }
+
+  try {
+    // Specifying an encoding returns a string instead of a buffer
+    const parsed = DotenvModule.parse(fs.readFileSync(dotenvPath, { encoding }))
+
+    Object.keys(parsed).forEach(function (key) {
+      if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
+        process.env[key] = parsed[key]
+      } else {
+        if (override === true) {
+          process.env[key] = parsed[key]
+        }
+
+        if (debug) {
+          if (override === true) {
+            _log(`"${key}" is already defined in \`process.env\` and WAS overwritten`)
+          } else {
+            _log(`"${key}" is already defined in \`process.env\` and was NOT overwritten`)
+          }
+        }
+      }
+    })
+
+    return { parsed }
+  } catch (e) {
+    if (debug) {
+      _log(`Failed to load ${dotenvPath} ${e.message}`)
+    }
+
+    return { error: e }
+  }
+}
+
+const DotenvModule = {
+  config,
+  parse
+}
+
+module.exports.config = DotenvModule.config
+module.exports.parse = DotenvModule.parse
+module.exports = DotenvModule
+
 
 /***/ }),
 
@@ -2688,19 +2822,62 @@ exports["default"] = _default;
 
 /***/ }),
 
-/***/ 258:
+/***/ 349:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const http = __nccwpck_require__(255);
+const config = __nccwpck_require__(570);
+
+class HttpClient {
+  constructor() {
+    this.client = new http.HttpClient();
+    this.client.requestOptions = {
+      headers: { [http.Headers.ContentType]: 'application/json' },
+    };
+    this.baseUrl = config.baseUrl;
+  }
+
+  async post(url, body) {
+    const data = JSON.stringify(body);
+    const response = await this.client.post(`${this.baseUrl}/${url}`, data);
+    const { statusCode, statusMessage } = response.message;
+    if (statusCode !== 200) {
+      throw new Error(
+        `POST to ${url} failed: [${statusCode}] ${statusMessage}`,
+      );
+    }
+    const result = await response.readBody();
+    return JSON.parse(result);
+  }
+}
+
+module.exports = HttpClient;
+
+
+/***/ }),
+
+/***/ 570:
 /***/ ((module) => {
 
-let wait = function (milliseconds) {
-  return new Promise((resolve) => {
-    if (typeof milliseconds !== 'number') {
-      throw new Error('milliseconds not a number');
-    }
-    setTimeout(() => resolve("done!"), milliseconds)
-  });
-};
+const config = Object.freeze({
+  baseUrl: process.env.BASE_URL || 'https://github-actions.nullplatform.io',
+});
 
-module.exports = wait;
+module.exports = config;
+
+
+/***/ }),
+
+/***/ 2:
+/***/ ((module) => {
+
+class Validate {
+  static isEmpty(string) {
+    return !string;
+  }
+}
+
+module.exports = Validate;
 
 
 /***/ }),
@@ -2791,6 +2968,14 @@ module.exports = require("tls");
 "use strict";
 module.exports = require("util");
 
+/***/ }),
+
+/***/ 968:
+/***/ ((module) => {
+
+"use strict";
+module.exports = JSON.parse('{"name":"dotenv","version":"16.0.3","description":"Loads environment variables from .env file","main":"lib/main.js","types":"lib/main.d.ts","exports":{".":{"require":"./lib/main.js","types":"./lib/main.d.ts","default":"./lib/main.js"},"./config":"./config.js","./config.js":"./config.js","./lib/env-options":"./lib/env-options.js","./lib/env-options.js":"./lib/env-options.js","./lib/cli-options":"./lib/cli-options.js","./lib/cli-options.js":"./lib/cli-options.js","./package.json":"./package.json"},"scripts":{"dts-check":"tsc --project tests/types/tsconfig.json","lint":"standard","lint-readme":"standard-markdown","pretest":"npm run lint && npm run dts-check","test":"tap tests/*.js --100 -Rspec","prerelease":"npm test","release":"standard-version"},"repository":{"type":"git","url":"git://github.com/motdotla/dotenv.git"},"keywords":["dotenv","env",".env","environment","variables","config","settings"],"readmeFilename":"README.md","license":"BSD-2-Clause","devDependencies":{"@types/node":"^17.0.9","decache":"^4.6.1","dtslint":"^3.7.0","sinon":"^12.0.1","standard":"^16.0.4","standard-markdown":"^7.1.0","standard-version":"^9.3.2","tap":"^15.1.6","tar":"^6.1.11","typescript":"^4.5.4"},"engines":{"node":">=12"}}');
+
 /***/ })
 
 /******/ 	});
@@ -2834,23 +3019,60 @@ module.exports = require("util");
 var __webpack_exports__ = {};
 // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
 (() => {
+const dotenv = __nccwpck_require__(437);
 const core = __nccwpck_require__(186);
-const wait = __nccwpck_require__(258);
+const HttpClient = __nccwpck_require__(349);
+const { isEmpty } = __nccwpck_require__(2);
 
+dotenv.config();
 
-// most @actions toolkit packages have async methods
+const TOKEN_VARIABLE_NAME = 'NULLPLATFORM_ACCESS_TOKEN';
+
 async function run() {
   try {
-    const ms = core.getInput('milliseconds');
-    core.info(`Waiting ${ms} milliseconds ...`);
+    const client = new HttpClient();
 
-    core.debug((new Date()).toTimeString()); // debug is only output if you set the secret `ACTIONS_RUNNER_DEBUG` to true
-    await wait(parseInt(ms));
-    core.info((new Date()).toTimeString());
+    const accessKey = core.getInput('access-key');
+    const secretAccessKey = core.getInput('secret-access-key');
+    const accessToken = core.getInput('access-token');
 
-    core.setOutput('time', new Date().toTimeString());
+    core.info('Validating inputs...');
+
+    if (isEmpty(accessToken) && isEmpty(accessKey)) {
+      core.setFailed('Input "access-key" cannot be empty');
+    }
+    if (isEmpty(accessToken) && isEmpty(secretAccessKey)) {
+      core.setFailed('Input "secret-access-key" cannot be empty');
+    }
+    if (isEmpty(accessToken)) {
+      core.setFailed('Input "access-token" cannot be empty');
+    }
+
+    core.info(
+      `Logging into Nullplatform using ${
+        isEmpty(accessToken) ? 'credentials' : 'access token'
+      }...`,
+    );
+
+    const body = {};
+    if (!isEmpty(accessToken)) {
+      body.access_token = accessToken;
+    } else {
+      body.access_key = accessKey;
+      body.secret_access_key = secretAccessKey;
+    }
+
+    const { token } = await client.post('login', body);
+
+    if (isEmpty(token)) {
+      core.setFailed('Output "token" cannot be empty');
+    }
+
+    core.info('Successfully logged in into Nullplatform');
+
+    core.exportVariable(TOKEN_VARIABLE_NAME, token);
   } catch (error) {
-    core.setFailed(error.message);
+    core.setFailed(`Login failed: ${error.message}`);
   }
 }
 

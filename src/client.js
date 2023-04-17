@@ -21,12 +21,12 @@ class HttpClient {
     const data = JSON.stringify(body);
     const response = await this.client.post(url, data);
     const { statusCode, statusMessage } = response.message;
+    const result = await response.readBody();
     if (statusCode !== 200) {
       throw new Error(
-        `POST to ${url} failed: [${statusCode}] ${statusMessage}`,
+        `POST to ${url} failed: [${statusCode}] ${statusMessage} - ${result}`,
       );
     }
-    const result = await response.readBody();
     return JSON.parse(result);
   }
 
@@ -37,12 +37,12 @@ class HttpClient {
     }
     const response = await this.client.get(url);
     const { statusCode, statusMessage } = response.message;
+    const result = await response.readBody();
     if (statusCode !== 200) {
       throw new Error(
-        `GET to ${url} failed: [${statusCode}] ${statusMessage}`,
+        `GET to ${url} failed: [${statusCode}] ${statusMessage} - ${result}`,
       );
     }
-    const result = await response.readBody();
     return JSON.parse(result);
   }
 }

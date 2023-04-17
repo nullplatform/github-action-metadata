@@ -1,15 +1,14 @@
 const http = require('@actions/http-client');
 const config = require('./config');
 const { isEmpty } = require('./validate');
-
-const TOKEN_VARIABLE_NAME = 'NULLPLATFORM_ACCESS_TOKEN';
+const { Variable } = require('./enums');
 
 class HttpClient {
   constructor() {
     this.client = new http.HttpClient();
     this.client.requestOptions = {
       headers: {
-        authorization: `Bearer ${process.env[TOKEN_VARIABLE_NAME]}`,
+        authorization: `Bearer ${process.env[Variable.NULLPLATFORM_ACCESS_TOKEN]}`,
         [http.Headers.ContentType]: 'application/json',
       },
     };

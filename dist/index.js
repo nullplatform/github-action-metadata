@@ -2828,15 +2828,14 @@ exports["default"] = _default;
 const http = __nccwpck_require__(255);
 const config = __nccwpck_require__(570);
 const { isEmpty } = __nccwpck_require__(2);
-
-const TOKEN_VARIABLE_NAME = 'NULLPLATFORM_ACCESS_TOKEN';
+const { Variable } = __nccwpck_require__(456);
 
 class HttpClient {
   constructor() {
     this.client = new http.HttpClient();
     this.client.requestOptions = {
       headers: {
-        authorization: `Bearer ${process.env[TOKEN_VARIABLE_NAME]}`,
+        authorization: `Bearer ${process.env[Variable.NULLPLATFORM_ACCESS_TOKEN]}`,
         [http.Headers.ContentType]: 'application/json',
       },
     };
@@ -2887,6 +2886,52 @@ const config = Object.freeze({
 });
 
 module.exports = config;
+
+
+/***/ }),
+
+/***/ 456:
+/***/ ((module) => {
+
+const Resource = Object.freeze({
+  APPLICATION: 'application',
+  BUILD: 'build',
+  RELEASE: 'release',
+  DEPLOYMENT: 'deployment',
+});
+
+const ApplicationStatus = Object.freeze({
+  PENDING: 'pending',
+  CREATING: 'creating',
+  UPDATING: 'updating',
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+  FAILED: 'failed',
+});
+
+const Input = Object.freeze({
+  RESOURCE: 'resource',
+  NAME: 'name',
+  STATUS: 'status',
+  REPOSITORY_URL: 'repository_url',
+  REPOSITORY_APP_PATH: 'repository_app_path',
+});
+
+const Output = Object.freeze({
+  METADATA: 'metadata',
+});
+
+const Variable = Object.freeze({
+  NULLPLATFORM_ACCESS_TOKEN: 'NULLPLATFORM_ACCESS_TOKEN',
+});
+
+module.exports = {
+  Resource,
+  Input,
+  Output,
+  Variable,
+  ApplicationStatus,
+};
 
 
 /***/ }),
@@ -3057,17 +3102,63 @@ const dotenv = __nccwpck_require__(437);
 const core = __nccwpck_require__(186);
 const HttpClient = __nccwpck_require__(349);
 const { isEmpty, isValidResource } = __nccwpck_require__(2);
+const {
+  Resource, Input, Output, ApplicationStatus,
+} = __nccwpck_require__(456);
 
 dotenv.config();
 
-const QUERY_OUTPUT_NAME = 'metadata';
+const buildApplicationQuery = () => {
+  const query = {};
+  const name = core.getInput(Input.NAME);
+  const repositoryUrl = core.getInput(Input.REPOSITORY_URL);
+  const repositoryAppPath = core.getInput(Input.REPOSITORY_APP_PATH);
+  const status = core.getInput(Input.STATUS);
 
-async function run() {
+  if (!isEmpty(name)) {
+    query[Input.NAME] = name;
+  }
+
+  if (!isEmpty(repositoryUrl)) {
+    query[Input.REPOSITORY_URL] = repositoryUrl;
+  }
+
+  if (!isEmpty(repositoryAppPath)) {
+    query[Input.REPOSITORY_APP_PATH] = repositoryAppPath;
+  }
+
+  query[Input.STATUS] = isEmpty(status) ? ApplicationStatus.ACTIVE : status;
+
+  return query;
+};
+
+const buildQuery = (resource) => {
+  let queryObject = {};
+  switch (resource) {
+    case Resource.APPLICATION:
+      queryObject = buildApplicationQuery();
+      break;
+    case Resource.BUILD:
+      // Not supported yet
+      break;
+    case Resource.RELEASE:
+      // Not supported yet
+      break;
+    case Resource.DEPLOYMENT:
+      // Not supported yet
+      break;
+    default:
+      // No query
+      break;
+  }
+  return new URLSearchParams(queryObject).toString();
+};
+
+const run = async () => {
   try {
     const client = new HttpClient();
 
-    const resource = core.getInput('resource');
-    const query = core.getInput('query');
+    const resource = core.getInput(Input.RESOURCE);
 
     core.info('Validating inputs...');
 
@@ -3077,17 +3168,19 @@ async function run() {
       core.setFailed('Input "resource" must be one of these valid resources: application, build, release, deployment');
     }
 
+    const query = buildQuery(resource);
+
     core.info(`Getting Nullplatform metadata for ${resource} resource with query: ${query}...`);
 
     const result = await client.get(resource, query);
 
     core.info(`Successfully queried ${resource} resource, got ${result.length} results`);
 
-    core.setOutput(QUERY_OUTPUT_NAME, result);
+    core.setOutput(Output.METADATA, result);
   } catch (error) {
     core.setFailed(`Query metadata failed: ${error.message}`);
   }
-}
+};
 
 run();
 

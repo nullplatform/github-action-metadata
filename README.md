@@ -103,7 +103,7 @@ You can now consume the action by referencing the v1 branch
 uses: nullplatform/github-action-metadata@v1
 with:
   resource: application
-  query: name=${{ env.APP_NAME }}
+  name: ${{ env.APP_NAME }}
 ```
 
 See the [actions tab](https://github.com/actions/javascript-action/actions) for runs of this action! :rocket:

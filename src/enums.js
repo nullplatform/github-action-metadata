@@ -18,8 +18,8 @@ const Input = Object.freeze({
   RESOURCE: 'resource',
   NAME: 'name',
   STATUS: 'status',
-  REPOSITORY_URL: 'repository_url',
-  REPOSITORY_APP_PATH: 'repository_app_path',
+  REPOSITORY_URL: 'repository-url',
+  REPOSITORY_APP_PATH: 'repository-app-path',
 });
 
 const Output = Object.freeze({

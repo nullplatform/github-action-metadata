@@ -8,6 +8,8 @@ const {
 
 dotenv.config();
 
+const inputToQuery = (input) => (!isEmpty(input) ? input.replace(/-/g, '_') : null);
+
 const buildApplicationQuery = () => {
   const query = {};
   const name = core.getInput(Input.NAME);
@@ -16,18 +18,18 @@ const buildApplicationQuery = () => {
   const status = core.getInput(Input.STATUS);
 
   if (!isEmpty(name)) {
-    query[Input.NAME] = name;
+    query[inputToQuery(Input.NAME)] = name;
   }
 
   if (!isEmpty(repositoryUrl)) {
-    query[Input.REPOSITORY_URL] = repositoryUrl;
+    query[inputToQuery(Input.REPOSITORY_URL)] = repositoryUrl;
   }
 
   if (!isEmpty(repositoryAppPath)) {
-    query[Input.REPOSITORY_APP_PATH] = repositoryAppPath;
+    query[inputToQuery(Input.REPOSITORY_APP_PATH)] = repositoryAppPath;
   }
 
-  query[Input.STATUS] = isEmpty(status) ? ApplicationStatus.ACTIVE : status;
+  query[inputToQuery(Input.STATUS)] = isEmpty(status) ? ApplicationStatus.ACTIVE : status;
 
   return query;
 };

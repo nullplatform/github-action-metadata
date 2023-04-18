@@ -10,10 +10,10 @@ inputs:
   status:
     description: "Application status"
     required: false
-  repository_url:
+  repository-url:
     description: "Application repository URL"
     required: false
-  repository_app_path:
+  repository-app-path:
     description: "Application repository path inside a monorepo"
     required: false
 runs:

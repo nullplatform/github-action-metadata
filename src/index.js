@@ -55,7 +55,6 @@ const buildQuery = (resource) => {
       // No query
       break;
   }
-  core.info(`Query object is: ${JSON.stringify(queryObject)}`);
   return new URLSearchParams(queryObject).toString();
 };
 

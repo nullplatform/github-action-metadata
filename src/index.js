@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
 const core = require('@actions/core');
+const github = require('@actions/github');
 const HttpClient = require('./client');
 const { isEmpty, isValidResource } = require('./validate');
 const {
@@ -13,7 +14,8 @@ const inputToQuery = (input) => (!isEmpty(input) ? input.replace(/-/g, '_') : nu
 const buildApplicationQuery = () => {
   const query = {};
   const name = core.getInput(Input.NAME);
-  const repositoryUrl = core.getInput(Input.REPOSITORY_URL);
+  const repositoryUrl = core.getInput(Input.REPOSITORY_URL)
+    || github.context.payload.repository.html_url;
   const repositoryAppPath = core.getInput(Input.REPOSITORY_APP_PATH);
   const status = core.getInput(Input.STATUS);
 

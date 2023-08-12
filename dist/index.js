@@ -1427,6 +1427,19 @@ class HttpClientResponse {
             }));
         });
     }
+    readBodyBuffer() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return new Promise((resolve) => __awaiter(this, void 0, void 0, function* () {
+                const chunks = [];
+                this.message.on('data', (chunk) => {
+                    chunks.push(chunk);
+                });
+                this.message.on('end', () => {
+                    resolve(Buffer.concat(chunks));
+                });
+            }));
+        });
+    }
 }
 exports.HttpClientResponse = HttpClientResponse;
 function isHttps(requestUrl) {
@@ -1931,7 +1944,13 @@ function getProxyUrl(reqUrl) {
         }
     })();
     if (proxyVar) {
-        return new URL(proxyVar);
+        try {
+            return new URL(proxyVar);
+        }
+        catch (_a) {
+            if (!proxyVar.startsWith('http://') && !proxyVar.startsWith('https://'))
+                return new URL(`http://${proxyVar}`);
+        }
     }
     else {
         return undefined;
@@ -4574,13 +4593,14 @@ exports.Deprecation = Deprecation;
 const fs = __nccwpck_require__(7147)
 const path = __nccwpck_require__(1017)
 const os = __nccwpck_require__(2037)
+const crypto = __nccwpck_require__(6113)
 const packageJson = __nccwpck_require__(9968)
 
 const version = packageJson.version
 
 const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
 
-// Parser src into an Object
+// Parse src into an Object
 function parse (src) {
   const obj = {}
 
@@ -4619,20 +4639,142 @@ function parse (src) {
   return obj
 }
 
+function _parseVault (options) {
+  const vaultPath = _vaultPath(options)
+
+  // Parse .env.vault
+  const result = DotenvModule.configDotenv({ path: vaultPath })
+  if (!result.parsed) {
+    throw new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`)
+  }
+
+  // handle scenario for comma separated keys - for use with key rotation
+  // example: DOTENV_KEY="dotenv://:key_1234@dotenv.org/vault/.env.vault?environment=prod,dotenv://:key_7890@dotenv.org/vault/.env.vault?environment=prod"
+  const keys = _dotenvKey(options).split(',')
+  const length = keys.length
+
+  let decrypted
+  for (let i = 0; i < length; i++) {
+    try {
+      // Get full key
+      const key = keys[i].trim()
+
+      // Get instructions for decrypt
+      const attrs = _instructions(result, key)
+
+      // Decrypt
+      decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key)
+
+      break
+    } catch (error) {
+      // last key
+      if (i + 1 >= length) {
+        throw error
+      }
+      // try next key
+    }
+  }
+
+  // Parse decrypted .env string
+  return DotenvModule.parse(decrypted)
+}
+
 function _log (message) {
+  console.log(`[dotenv@${version}][INFO] ${message}`)
+}
+
+function _warn (message) {
+  console.log(`[dotenv@${version}][WARN] ${message}`)
+}
+
+function _debug (message) {
   console.log(`[dotenv@${version}][DEBUG] ${message}`)
+}
+
+function _dotenvKey (options) {
+  // prioritize developer directly setting options.DOTENV_KEY
+  if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+    return options.DOTENV_KEY
+  }
+
+  // secondary infra already contains a DOTENV_KEY environment variable
+  if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+    return process.env.DOTENV_KEY
+  }
+
+  // fallback to empty string
+  return ''
+}
+
+function _instructions (result, dotenvKey) {
+  // Parse DOTENV_KEY. Format is a URI
+  let uri
+  try {
+    uri = new URL(dotenvKey)
+  } catch (error) {
+    if (error.code === 'ERR_INVALID_URL') {
+      throw new Error('INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenv.org/vault/.env.vault?environment=development')
+    }
+
+    throw error
+  }
+
+  // Get decrypt key
+  const key = uri.password
+  if (!key) {
+    throw new Error('INVALID_DOTENV_KEY: Missing key part')
+  }
+
+  // Get environment
+  const environment = uri.searchParams.get('environment')
+  if (!environment) {
+    throw new Error('INVALID_DOTENV_KEY: Missing environment part')
+  }
+
+  // Get ciphertext payload
+  const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`
+  const ciphertext = result.parsed[environmentKey] // DOTENV_VAULT_PRODUCTION
+  if (!ciphertext) {
+    throw new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`)
+  }
+
+  return { ciphertext, key }
+}
+
+function _vaultPath (options) {
+  let dotenvPath = path.resolve(process.cwd(), '.env')
+
+  if (options && options.path && options.path.length > 0) {
+    dotenvPath = options.path
+  }
+
+  // Locate .env.vault
+  return dotenvPath.endsWith('.vault') ? dotenvPath : `${dotenvPath}.vault`
 }
 
 function _resolveHome (envPath) {
   return envPath[0] === '~' ? path.join(os.homedir(), envPath.slice(1)) : envPath
 }
 
-// Populates process.env from .env file
-function config (options) {
+function _configVault (options) {
+  _log('Loading env from encrypted .env.vault')
+
+  const parsed = DotenvModule._parseVault(options)
+
+  let processEnv = process.env
+  if (options && options.processEnv != null) {
+    processEnv = options.processEnv
+  }
+
+  DotenvModule.populate(processEnv, parsed, options)
+
+  return { parsed }
+}
+
+function configDotenv (options) {
   let dotenvPath = path.resolve(process.cwd(), '.env')
   let encoding = 'utf8'
   const debug = Boolean(options && options.debug)
-  const override = Boolean(options && options.override)
 
   if (options) {
     if (options.path != null) {
@@ -4647,41 +4789,120 @@ function config (options) {
     // Specifying an encoding returns a string instead of a buffer
     const parsed = DotenvModule.parse(fs.readFileSync(dotenvPath, { encoding }))
 
-    Object.keys(parsed).forEach(function (key) {
-      if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
-        process.env[key] = parsed[key]
-      } else {
-        if (override === true) {
-          process.env[key] = parsed[key]
-        }
+    let processEnv = process.env
+    if (options && options.processEnv != null) {
+      processEnv = options.processEnv
+    }
 
-        if (debug) {
-          if (override === true) {
-            _log(`"${key}" is already defined in \`process.env\` and WAS overwritten`)
-          } else {
-            _log(`"${key}" is already defined in \`process.env\` and was NOT overwritten`)
-          }
-        }
-      }
-    })
+    DotenvModule.populate(processEnv, parsed, options)
 
     return { parsed }
   } catch (e) {
     if (debug) {
-      _log(`Failed to load ${dotenvPath} ${e.message}`)
+      _debug(`Failed to load ${dotenvPath} ${e.message}`)
     }
 
     return { error: e }
   }
 }
 
-const DotenvModule = {
-  config,
-  parse
+// Populates process.env from .env file
+function config (options) {
+  const vaultPath = _vaultPath(options)
+
+  // fallback to original dotenv if DOTENV_KEY is not set
+  if (_dotenvKey(options).length === 0) {
+    return DotenvModule.configDotenv(options)
+  }
+
+  // dotenvKey exists but .env.vault file does not exist
+  if (!fs.existsSync(vaultPath)) {
+    _warn(`You set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}. Did you forget to build it?`)
+
+    return DotenvModule.configDotenv(options)
+  }
+
+  return DotenvModule._configVault(options)
 }
 
+function decrypt (encrypted, keyStr) {
+  const key = Buffer.from(keyStr.slice(-64), 'hex')
+  let ciphertext = Buffer.from(encrypted, 'base64')
+
+  const nonce = ciphertext.slice(0, 12)
+  const authTag = ciphertext.slice(-16)
+  ciphertext = ciphertext.slice(12, -16)
+
+  try {
+    const aesgcm = crypto.createDecipheriv('aes-256-gcm', key, nonce)
+    aesgcm.setAuthTag(authTag)
+    return `${aesgcm.update(ciphertext)}${aesgcm.final()}`
+  } catch (error) {
+    const isRange = error instanceof RangeError
+    const invalidKeyLength = error.message === 'Invalid key length'
+    const decryptionFailed = error.message === 'Unsupported state or unable to authenticate data'
+
+    if (isRange || invalidKeyLength) {
+      const msg = 'INVALID_DOTENV_KEY: It must be 64 characters long (or more)'
+      throw new Error(msg)
+    } else if (decryptionFailed) {
+      const msg = 'DECRYPTION_FAILED: Please check your DOTENV_KEY'
+      throw new Error(msg)
+    } else {
+      console.error('Error: ', error.code)
+      console.error('Error: ', error.message)
+      throw error
+    }
+  }
+}
+
+// Populate process.env with parsed values
+function populate (processEnv, parsed, options = {}) {
+  const debug = Boolean(options && options.debug)
+  const override = Boolean(options && options.override)
+
+  if (typeof parsed !== 'object') {
+    throw new Error('OBJECT_REQUIRED: Please check the processEnv argument being passed to populate')
+  }
+
+  // Set process.env
+  for (const key of Object.keys(parsed)) {
+    if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+      if (override === true) {
+        processEnv[key] = parsed[key]
+      }
+
+      if (debug) {
+        if (override === true) {
+          _debug(`"${key}" is already defined and WAS overwritten`)
+        } else {
+          _debug(`"${key}" is already defined and was NOT overwritten`)
+        }
+      }
+    } else {
+      processEnv[key] = parsed[key]
+    }
+  }
+}
+
+const DotenvModule = {
+  configDotenv,
+  _configVault,
+  _parseVault,
+  config,
+  decrypt,
+  parse,
+  populate
+}
+
+module.exports.configDotenv = DotenvModule.configDotenv
+module.exports._configVault = DotenvModule._configVault
+module.exports._parseVault = DotenvModule._parseVault
 module.exports.config = DotenvModule.config
+module.exports.decrypt = DotenvModule.decrypt
 module.exports.parse = DotenvModule.parse
+module.exports.populate = DotenvModule.populate
+
 module.exports = DotenvModule
 
 
@@ -9731,6 +9952,104 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 3348:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const dotenv = __nccwpck_require__(2437);
+const core = __nccwpck_require__(2186);
+const github = __nccwpck_require__(5438);
+const HttpClient = __nccwpck_require__(4349);
+const { isEmpty, isValidResource } = __nccwpck_require__(1002);
+const {
+  Resource, Input, Output, ApplicationStatus,
+} = __nccwpck_require__(3456);
+
+dotenv.config();
+
+const inputToQuery = (input) => (!isEmpty(input) ? input.replace(/-/g, '_') : null);
+
+const buildApplicationQuery = () => {
+  const query = {};
+  const name = core.getInput(Input.NAME);
+  const repositoryUrl = core.getInput(Input.CODE_REPOSITORY.URL)
+    || core.getInput(Input.REPOSITORY_URL)
+    || github.context.payload.repository.html_url;
+  const repositoryAppPath = core.getInput(Input.CODE_REPOSITORY.APPLICATION_PATH)
+    || core.getInput(Input.REPOSITORY_APP_PATH);
+  const status = core.getInput(Input.STATUS);
+
+  if (!isEmpty(name)) {
+    query[inputToQuery(Input.NAME)] = name;
+  }
+
+  if (!isEmpty(repositoryUrl)) {
+    query[inputToQuery(Input.REPOSITORY_URL)] = repositoryUrl;
+  }
+
+  if (!isEmpty(repositoryUrl) && !isEmpty(repositoryAppPath)) {
+    query[inputToQuery(Input.REPOSITORY_APP_PATH)] = repositoryAppPath;
+  }
+
+  query[inputToQuery(Input.STATUS)] = isEmpty(status) ? ApplicationStatus.ACTIVE : status;
+
+  return query;
+};
+
+const buildQuery = (resource) => {
+  let queryObject = {};
+  switch (resource) {
+    case Resource.APPLICATION:
+      queryObject = buildApplicationQuery();
+      break;
+    case Resource.BUILD:
+      // Not supported yet
+      break;
+    case Resource.RELEASE:
+      // Not supported yet
+      break;
+    case Resource.DEPLOYMENT:
+      // Not supported yet
+      break;
+    default:
+      // No query
+      break;
+  }
+  return new URLSearchParams(queryObject).toString();
+};
+
+const run = async () => {
+  try {
+    const client = new HttpClient();
+
+    const resource = core.getInput(Input.RESOURCE);
+
+    core.info('Validating inputs...');
+
+    if (isEmpty(resource)) {
+      core.setFailed('Input "resource" cannot be empty');
+    } else if (!isValidResource(resource)) {
+      core.setFailed('Input "resource" must be one of these valid resources: application, build, release, deployment');
+    }
+
+    const query = buildQuery(resource);
+
+    core.info(`Getting Nullplatform metadata for ${resource} resource with query: ${query}...`);
+
+    const result = await client.get(resource, query);
+
+    core.info(`Successfully queried ${resource} resource, got ${result.length} results`);
+
+    core.setOutput(Output.METADATA, result);
+  } catch (error) {
+    core.setFailed(`Query metadata failed: ${error.message}`);
+  }
+};
+
+module.exports = run;
+
+
+/***/ }),
+
 /***/ 4349:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -9791,7 +10110,7 @@ module.exports = HttpClient;
 /***/ ((module) => {
 
 const config = Object.freeze({
-  baseUrl: process.env.BASE_URL || 'https://github-actions.nullplatform.io',
+  baseUrl: process.env.BASE_URL || 'https://ci.nullplatform.com',
 });
 
 module.exports = config;
@@ -9805,6 +10124,7 @@ module.exports = config;
 const Resource = Object.freeze({
   APPLICATION: 'application',
   BUILD: 'build',
+  ASSET: 'asset',
   RELEASE: 'release',
   DEPLOYMENT: 'deployment',
 });
@@ -9822,8 +10142,14 @@ const Input = Object.freeze({
   RESOURCE: 'resource',
   NAME: 'name',
   STATUS: 'status',
+  // @deprecated 'use Input.CODE_REPOSITORY.URL'
   REPOSITORY_URL: 'repository-url',
+  // @deprecated 'use Input.CODE_REPOSITORY.APPLICATION_PATH'
   REPOSITORY_APP_PATH: 'repository-app-path',
+  CODE_REPOSITORY: {
+    URL: 'code-repository-url',
+    APPLICATION_PATH: 'code-repository-application-path',
+  },
 });
 
 const Output = Object.freeze({
@@ -10002,7 +10328,7 @@ module.exports = require("zlib");
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"name":"dotenv","version":"16.0.3","description":"Loads environment variables from .env file","main":"lib/main.js","types":"lib/main.d.ts","exports":{".":{"require":"./lib/main.js","types":"./lib/main.d.ts","default":"./lib/main.js"},"./config":"./config.js","./config.js":"./config.js","./lib/env-options":"./lib/env-options.js","./lib/env-options.js":"./lib/env-options.js","./lib/cli-options":"./lib/cli-options.js","./lib/cli-options.js":"./lib/cli-options.js","./package.json":"./package.json"},"scripts":{"dts-check":"tsc --project tests/types/tsconfig.json","lint":"standard","lint-readme":"standard-markdown","pretest":"npm run lint && npm run dts-check","test":"tap tests/*.js --100 -Rspec","prerelease":"npm test","release":"standard-version"},"repository":{"type":"git","url":"git://github.com/motdotla/dotenv.git"},"keywords":["dotenv","env",".env","environment","variables","config","settings"],"readmeFilename":"README.md","license":"BSD-2-Clause","devDependencies":{"@types/node":"^17.0.9","decache":"^4.6.1","dtslint":"^3.7.0","sinon":"^12.0.1","standard":"^16.0.4","standard-markdown":"^7.1.0","standard-version":"^9.3.2","tap":"^15.1.6","tar":"^6.1.11","typescript":"^4.5.4"},"engines":{"node":">=12"}}');
+module.exports = JSON.parse('{"name":"dotenv","version":"16.3.1","description":"Loads environment variables from .env file","main":"lib/main.js","types":"lib/main.d.ts","exports":{".":{"types":"./lib/main.d.ts","require":"./lib/main.js","default":"./lib/main.js"},"./config":"./config.js","./config.js":"./config.js","./lib/env-options":"./lib/env-options.js","./lib/env-options.js":"./lib/env-options.js","./lib/cli-options":"./lib/cli-options.js","./lib/cli-options.js":"./lib/cli-options.js","./package.json":"./package.json"},"scripts":{"dts-check":"tsc --project tests/types/tsconfig.json","lint":"standard","lint-readme":"standard-markdown","pretest":"npm run lint && npm run dts-check","test":"tap tests/*.js --100 -Rspec","prerelease":"npm test","release":"standard-version"},"repository":{"type":"git","url":"git://github.com/motdotla/dotenv.git"},"funding":"https://github.com/motdotla/dotenv?sponsor=1","keywords":["dotenv","env",".env","environment","variables","config","settings"],"readmeFilename":"README.md","license":"BSD-2-Clause","devDependencies":{"@definitelytyped/dtslint":"^0.0.133","@types/node":"^18.11.3","decache":"^4.6.1","sinon":"^14.0.1","standard":"^17.0.0","standard-markdown":"^7.1.0","standard-version":"^9.5.0","tap":"^16.3.0","tar":"^6.1.11","typescript":"^4.8.4"},"engines":{"node":">=12"},"browser":{"fs":false}}');
 
 /***/ }),
 
@@ -10055,95 +10381,9 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 var __webpack_exports__ = {};
 // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
 (() => {
-const dotenv = __nccwpck_require__(2437);
-const core = __nccwpck_require__(2186);
-const github = __nccwpck_require__(5438);
-const HttpClient = __nccwpck_require__(4349);
-const { isEmpty, isValidResource } = __nccwpck_require__(1002);
-const {
-  Resource, Input, Output, ApplicationStatus,
-} = __nccwpck_require__(3456);
+const action = __nccwpck_require__(3348);
 
-dotenv.config();
-
-const inputToQuery = (input) => (!isEmpty(input) ? input.replace(/-/g, '_') : null);
-
-const buildApplicationQuery = () => {
-  const query = {};
-  const name = core.getInput(Input.NAME);
-  const repositoryUrl = core.getInput(Input.REPOSITORY_URL)
-    || github.context.payload.repository.html_url;
-  const repositoryAppPath = core.getInput(Input.REPOSITORY_APP_PATH);
-  const status = core.getInput(Input.STATUS);
-
-  if (!isEmpty(name)) {
-    query[inputToQuery(Input.NAME)] = name;
-  }
-
-  if (!isEmpty(repositoryUrl)) {
-    query[inputToQuery(Input.REPOSITORY_URL)] = repositoryUrl;
-  }
-
-  if (!isEmpty(repositoryAppPath)) {
-    query[inputToQuery(Input.REPOSITORY_APP_PATH)] = repositoryAppPath;
-  }
-
-  query[inputToQuery(Input.STATUS)] = isEmpty(status) ? ApplicationStatus.ACTIVE : status;
-
-  return query;
-};
-
-const buildQuery = (resource) => {
-  let queryObject = {};
-  switch (resource) {
-    case Resource.APPLICATION:
-      queryObject = buildApplicationQuery();
-      break;
-    case Resource.BUILD:
-      // Not supported yet
-      break;
-    case Resource.RELEASE:
-      // Not supported yet
-      break;
-    case Resource.DEPLOYMENT:
-      // Not supported yet
-      break;
-    default:
-      // No query
-      break;
-  }
-  return new URLSearchParams(queryObject).toString();
-};
-
-const run = async () => {
-  try {
-    const client = new HttpClient();
-
-    const resource = core.getInput(Input.RESOURCE);
-
-    core.info('Validating inputs...');
-
-    if (isEmpty(resource)) {
-      core.setFailed('Input "resource" cannot be empty');
-    } else if (!isValidResource(resource)) {
-      core.setFailed('Input "resource" must be one of these valid resources: application, build, release, deployment');
-    }
-
-    const query = buildQuery(resource);
-
-    core.info(`Getting Nullplatform metadata for ${resource} resource with query: ${query}...`);
-
-    const result = await client.get(resource, query);
-
-    core.info(`Successfully queried ${resource} resource, got ${result.length} results`);
-
-    core.setOutput(Output.METADATA, result);
-  } catch (error) {
-    core.setFailed(`Query metadata failed: ${error.message}`);
-  }
-};
-
-run();
+action();
 
 })();
 

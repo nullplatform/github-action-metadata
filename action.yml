@@ -2,7 +2,7 @@ name: "Nullplatform Metadata"
 description: "Github Action for query Nullplatform metadata"
 inputs:
   resource:
-    description: "nullplatform resource to query"
+    description: "nullplatform resource to query. One of: application, build, asset, release, deployment"
     required: true
   name:
     description: "Application name"
@@ -13,8 +13,16 @@ inputs:
   repository-url:
     description: "Application repository URL"
     required: false
+    deprecationMessage: "*repository-url* input is deprecated, use *code-repository-url* instead"
   repository-app-path:
     description: "Application repository path inside a monorepo"
+    required: false
+    deprecationMessage: "*repository-app-path* input is deprecated, use *code-repository-app-path* instead"
+  code-repository-url:
+    description: "Application code repository URL"
+    required: false
+  code-repository-application-path:
+    description: "Application code repository path inside a monorepo"
     required: false
 runs:
   using: "node16"

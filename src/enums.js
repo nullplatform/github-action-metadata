@@ -1,6 +1,7 @@
 const Resource = Object.freeze({
   APPLICATION: 'application',
   BUILD: 'build',
+  ASSET: 'asset',
   RELEASE: 'release',
   DEPLOYMENT: 'deployment',
 });
@@ -18,8 +19,14 @@ const Input = Object.freeze({
   RESOURCE: 'resource',
   NAME: 'name',
   STATUS: 'status',
+  // @deprecated 'use Input.CODE_REPOSITORY.URL'
   REPOSITORY_URL: 'repository-url',
+  // @deprecated 'use Input.CODE_REPOSITORY.APPLICATION_PATH'
   REPOSITORY_APP_PATH: 'repository-app-path',
+  CODE_REPOSITORY: {
+    URL: 'code-repository-url',
+    APPLICATION_PATH: 'code-repository-application-path',
+  },
 });
 
 const Output = Object.freeze({

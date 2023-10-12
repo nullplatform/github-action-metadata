@@ -79,13 +79,13 @@ jobs:
 
       - name: Login to Nullplatform
         id: login-nullplatform
-        uses: nullplatform/nullplatform-login-action@v1
+        uses: nullplatform/github-action-login@v1
         with:
           api-key: ${{ secrets.NULLPLATFORM_API_KEY }}
 
       - name: Query Nullplatform Application
         id: query-application
-        uses: nullplatform/nullplatform-metadata-action@v1
+        uses: nullplatform/github-action-metadata@v1
         with:
           resource: application
           name: my-app-name
@@ -117,13 +117,13 @@ jobs:
 
       - name: Login to Nullplatform
         id: login-nullplatform
-        uses: nullplatform/nullplatform-login-action@v1
+        uses: nullplatform/github-action-login@v1
         with:
           api-key: ${{ secrets.NULLPLATFORM_API_KEY }}
 
       - name: Query Nullplatform Build
         id: query-build
-        uses: nullplatform/nullplatform-metadata-action@v1
+        uses: nullplatform/github-action-metadata@v1
         with:
           resource: build
 

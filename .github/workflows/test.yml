@@ -13,7 +13,7 @@ jobs:
     env:
       INPUT_ACCESS-TOKEN: ${{ secrets.NULLPLATFORM_ACCESS_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: npm ci
       - run: npm test
 
@@ -21,7 +21,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./
         with:
           access-token: ${{ secrets.NULLPLATFORM_ACCESS_TOKEN }}
